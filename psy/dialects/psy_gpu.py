@@ -40,7 +40,7 @@ class ParallelLoop(Operation):
       return res
 
     def verify_(self) -> None:
-      pass
+      pass    
 
 @irdl_op_definition    
 class CollapsedParallelLoop(Operation):
@@ -52,6 +52,23 @@ class CollapsedParallelLoop(Operation):
     def get(loop: List[Operation],
             verify_op: bool = True) -> CollapsedParallelLoop:
       res = CollapsedParallelLoop.build(regions=[loop])
+      if verify_op:
+        res.verify(verify_nested_ops=False)
+      return res
+
+    def verify_(self) -> None:
+      pass
+    
+@irdl_op_definition    
+class SequentialRoutine(Operation):
+    name = "psy.gpu.sequentialroutine"
+    
+    routine = SingleBlockRegionDef()
+    
+    @staticmethod
+    def get(proc: List[Operation],
+            verify_op: bool = True) -> SequentialRoutine:
+      res = SequentialRoutine.build(regions=[proc])
       if verify_op:
         res.verify(verify_nested_ops=False)
       return res

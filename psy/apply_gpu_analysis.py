@@ -22,9 +22,31 @@ class ApplyCoalesceToNestedLoops(RewritePattern):
         collapsed_loop=psy_gpu.CollapsedParallelLoop.get([for_loop])
         rewriter.insert_op_at_pos(collapsed_loop, patentblock, idx)
         
+class ApplySequentialRoutineToCalledProcedures(RewritePattern):
+  def __init__(self, procedures_to_match):
+    self.procedures_to_match=procedures_to_match
+  
+  @op_type_rewrite_pattern
+  def match_and_rewrite(self, routine: ftn_dag.Routine, rewriter: PatternRewriter):
+    if routine.routine_name.data in self.procedures_to_match:
+      patentblock = routine.parent
+      assert isinstance(patentblock, Block)
+      idx = patentblock.ops.index(routine)
+      routine.detach()
+          
+      sequential_proc=psy_gpu.SequentialRoutine.get([routine])
+      rewriter.insert_op_at_pos(sequential_proc, patentblock, idx)
+        
 class AccessMode(Enum):
     WRITE = 1
-    READ = 2         
+    READ = 2       
+    
+class DetermineCalledProcedures(Visitor):
+  def __init__(self):
+    self.called_procedures=[]
+    
+  def visit_call_expr(self, call_expr: ftn_dag.CallExpr):
+    self.called_procedures.append(call_expr.func.data)
         
 class CollectWrittenVariables(Visitor):      
   written_variables={}
@@ -76,6 +98,9 @@ class CollectWrittenVariables(Visitor):
       self.traverse(op)
           
 class ApplyGPURewriter(RewritePattern):
+    def __init__(self):
+      self.called_procedures=[]
+      
     @op_type_rewrite_pattern
     def match_and_rewrite(  # type: ignore reportIncompatibleMethodOverride
             self, for_loop: ftn_dag.Do, rewriter: PatternRewriter):        
@@ -112,6 +137,11 @@ class ApplyGPURewriter(RewritePattern):
                                              create_vars, [])
         rewriter.insert_op_at_pos(gpu_loop, block, idx)
         
+        dcpVisitor=DetermineCalledProcedures()
+        dcpVisitor.traverse(gpu_loop)
+        
+        self.called_procedures.extend(dcpVisitor.called_procedures)
+        
 class DetermineNumberOfCollapsedInnerLoops(Visitor):
   num_collapsed_loops=0
   
@@ -122,12 +152,14 @@ class DetermineNumberOfCollapsedInnerLoops(Visitor):
      
   def traverse_collapsed_parallel_loop(self, collapsed_parallel_loop:psy_gpu.CollapsedParallelLoop):
     self.num_collapsed_loops+=1
-    self.traverse(collapsed_parallel_loop.loop.blocks[0].ops[0])
+    self.traverse(collapsed_parallel_loop.loop.blocks[0].ops[0])    
 
 def apply_gpu_analysis(ctx: ftn_dag.MLContext, module: ModuleOp) -> ModuleOp:
-    walker = PatternRewriteWalker(GreedyRewritePatternApplier([
-        ApplyGPURewriter(),
-    ]), apply_recursively=False)
+    applyGPURewriter=ApplyGPURewriter()
+    walker = PatternRewriteWalker(GreedyRewritePatternApplier([applyGPURewriter]), apply_recursively=False)
+    walker.rewrite_module(module)    
+    
+    walker=PatternRewriteWalker(GreedyRewritePatternApplier([ApplySequentialRoutineToCalledProcedures(applyGPURewriter.called_procedures)]), apply_recursively=False)
     walker.rewrite_module(module)
     
     visitor = DetermineNumberOfCollapsedInnerLoops()
