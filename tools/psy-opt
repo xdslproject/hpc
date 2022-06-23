@@ -9,12 +9,15 @@ from xdsl.dialects.builtin import ModuleOp
 
 #from psy.psy_ast_to_psy_flat import psy_ast_to_psy_flat
 from ftn.ftn_ast_to_ftn_dag import ftn_ast_to_ftn_dag
-from ftn.printer import print_program
+from ftn.bind_procedures import bind_procedures
+from ftn.ftn_printer import print_fortran
+from psy.gpu_printer import print_openacc
 
 from ftn.dialects.ftn_ast import ftnAST
 from ftn.dialects.ftn_dag import ftnDAG
 #from psy.dialects.psy_flat import PsyFlat
-from psy.utils.semantic_error import SemanticError
+from psy.apply_gpu_analysis import apply_gpu_analysis
+from psy.util.semantic_error import SemanticError
 
 from typing import Callable, Dict, List
 
@@ -25,19 +28,21 @@ class PsyOptMain(xDSLOptMain):
     passes_native = [       
 
         # IR Generation        
-        ftn_ast_to_ftn_dag
+        ftn_ast_to_ftn_dag,
+        bind_procedures,
+        apply_gpu_analysis
     ]
 
     def register_all_passes(self):
         self.available_passes = self.get_passes_as_dict()
 
     def _output_fortran(prog: ModuleOp, output: IOBase):
-        print_program(prog.ops, stream=output)
+        print_fortran(prog.ops, stream=output)
 
     def register_all_targets(self):
         super().register_all_targets()
-        self.available_targets['fortran'] = lambda prog, output: print_program(
-            prog.ops, stream=output)
+        self.available_targets['fortran'] = lambda prog, output: print_fortran(prog.ops, stream=output)
+        self.available_targets['fortran-openacc'] = lambda prog, output: print_openacc(prog.ops, stream=output)
 
     def setup_pipeline(self):        
       super().setup_pipeline()        
