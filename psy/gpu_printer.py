@@ -7,14 +7,14 @@ import sys
 class OpenAccPrinter(ftn_printer.FortranPrinter):
   def print_op(self, op, stream=sys.stdout):
     if isinstance(op, psy_gpu.ParallelLoop):
-      print("!$acc data", end="")
+      print("!$acc enter data", end="")
       self.generate_data_directive(op.copy_in_vars, " copyin")
       self.generate_data_directive(op.copy_out_vars, " copyout")   
       self.generate_data_directive(op.create_vars, " create")
       print("")
       self.generate_loop_annotation(op)
       self.print_op(op.loop.blocks[0].ops[0], stream)
-      print("!$acc end data")
+      print("!$acc exit data")
     elif isinstance(op, psy_gpu.CollapsedParallelLoop):
       self.print_op(op.loop.blocks[0].ops[0], stream)
     else:
@@ -24,17 +24,16 @@ class OpenAccPrinter(ftn_printer.FortranPrinter):
     print(f"!$acc parallel loop vector_length({parallel_loop.attributes['vector_length'].data}) num_workers({parallel_loop.attributes['num_workers'].data}) gang", end="")
     collapse_loops=parallel_loop.attributes["num_inner_loops_to_collapse"].data
     if collapse_loops > 0:
-      print(f" collapse({collapse_loops})", end="")
+      # Collapse plus one here as we need to include the outer loop that is being decorated too
+      print(f" collapse({collapse_loops+1})", end="")
       
     print("")
       
   def generate_data_directive(self, data_vars, pragma_str):
     if len(data_vars.blocks[0].ops) == 0: return
-    print(f"{pragma_str}(", end="")
-    needs_comma=False
-    for data_op in data_vars.blocks[0].ops:
-      if (needs_comma): print(", ", end="")
-      needs_comma=True
+    print(f"{pragma_str}(", end="")    
+    for index, data_op in enumerate(data_vars.blocks[0].ops):
+      if (index > 0): print(", ", end="")      
       self.print_op(data_op)
     print(")", end="")
 
