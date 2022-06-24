@@ -39,7 +39,7 @@ class ApplySequentialRoutineToCalledProcedures(RewritePattern):
         
 class AccessMode(Enum):
     WRITE = 1
-    READ = 2       
+    READ = 2    
     
 class DetermineCalledProcedures(Visitor):
   def __init__(self):
@@ -48,11 +48,14 @@ class DetermineCalledProcedures(Visitor):
   def visit_call_expr(self, call_expr: ftn_dag.CallExpr):
     self.called_procedures.append(call_expr.func.data)
         
-class CollectWrittenVariables(Visitor):      
-  written_variables={}
-  read_variables={}
-  current_function_bound_vars=[]  
-  currentMode=AccessMode.WRITE
+class CollectWrittenVariables(Visitor): 
+  
+  def __init__(self):     
+    self.written_variables={}
+    self.read_variables={}
+    self.loop_variables={}
+    self.current_function_bound_vars=[]  
+    self.currentMode=AccessMode.WRITE
   
   def populate_current_function_bound_vars(self, bound_variables):
     for var in bound_variables.data:
@@ -75,19 +78,27 @@ class CollectWrittenVariables(Visitor):
     for op in member_access_expr.var.blocks[0].ops:
       self.traverse(op)
       
-  def traverse_member_access(self, member_access_expr: ftn_dag.MemberAccess):
+  def traverse_member_access(self, member_access_expr: ftn_dag.MemberAccess):    
     if member_access_expr.var.var_name.data in self.current_function_bound_vars:      
       if self.currentMode == AccessMode.WRITE:
         self.written_variables[member_access_expr.var.var_name.data]=member_access_expr
       else:
         self.read_variables[member_access_expr.var.var_name.data]=member_access_expr
       
-  def traverse_expr_name(self, id_expr: ftn_dag.ExprName):
+  def traverse_expr_name(self, id_expr: ftn_dag.ExprName):    
     if id_expr.var.var_name.data in self.current_function_bound_vars:
       if self.currentMode == AccessMode.WRITE:
         self.written_variables[id_expr.var.var_name.data]=id_expr
       else:            
-        self.read_variables[id_expr.var.var_name.data]=id_expr  
+        self.read_variables[id_expr.var.var_name.data]=id_expr
+        
+  def traverse_do(self, dl: ftn_dag.Do):
+    self.loop_variables[dl.iterator.blocks[0].ops[0].var.var_name.data]=dl.iterator.blocks[0].ops[0]
+    self.traverse(dl.start.blocks[0].ops[0]) 
+    self.traverse(dl.stop.blocks[0].ops[0])
+    self.traverse(dl.step.blocks[0].ops[0])
+    for op in dl.body.blocks[0].ops:
+      self.traverse(op)
       
   def traverse_assign(self, assign:ftn_dag.Assign):   
     self.currentMode=AccessMode.WRITE
@@ -124,6 +135,7 @@ class ApplyGPURewriter(RewritePattern):
         copy_in_vars=[]
         copy_out_vars=[]
         create_vars=[]
+        private_vars=[]
         
         for key, value in visitor.written_variables.items():
           copy_out_vars.append(value.clone())
@@ -131,10 +143,14 @@ class ApplyGPURewriter(RewritePattern):
             create_vars.append(value.clone())
             
         for key, value in visitor.read_variables.items():
-          copy_in_vars.append(value.clone())
+          if key not in  visitor.loop_variables:
+            copy_in_vars.append(value.clone())
+          
+        for key,value in visitor.loop_variables.items():
+          private_vars.append(value.clone())
         
         gpu_loop = psy_gpu.ParallelLoop.get([for_loop], 10, 10, copy_in_vars, copy_out_vars,
-                                             create_vars, [])
+                                             create_vars, private_vars)
         rewriter.insert_op_at_pos(gpu_loop, block, idx)
         
         dcpVisitor=DetermineCalledProcedures()
@@ -163,6 +179,6 @@ def apply_gpu_analysis(ctx: ftn_dag.MLContext, module: ModuleOp) -> ModuleOp:
     walker.rewrite_module(module)
     
     visitor = DetermineNumberOfCollapsedInnerLoops()
-    visitor.traverse(module)
+    visitor.traverse(module)        
 
     return module

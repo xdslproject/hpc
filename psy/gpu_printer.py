@@ -35,13 +35,15 @@ class OpenAccPrinter(ftn_printer.FortranPrinter):
       # Collapse plus one here as we need to include the outer loop that is being decorated too
       print(f" collapse({collapse_loops+1})", end="")
       
+    self.generate_data_directive(parallel_loop.private_vars, " private")
+      
     print("")
       
-  def generate_data_directive(self, data_vars, pragma_str):
+  def generate_data_directive(self, data_vars, pragma_str, ignore_scalars=False, scalars_only=False):
     if len(data_vars.blocks[0].ops) == 0: return
-    print(f"{pragma_str}(", end="")    
+    print(f"{pragma_str}(", end="")
     for index, data_op in enumerate(data_vars.blocks[0].ops):
-      if (index > 0): print(", ", end="")      
+      if (index > 0): print(", ", end="")          
       self.print_op(data_op)
     print(")", end="")
 
