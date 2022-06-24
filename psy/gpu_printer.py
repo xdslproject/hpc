@@ -7,18 +7,23 @@ import sys
 class OpenAccPrinter(ftn_printer.FortranPrinter):
   def print_op(self, op, stream=sys.stdout):
     if isinstance(op, psy_gpu.ParallelLoop):
-      self.print_indent()
-      print("!$acc enter data", end="")
-      self.generate_data_directive(op.copy_in_vars, " copyin")
-      self.generate_data_directive(op.copy_out_vars, " copyout")   
-      self.generate_data_directive(op.create_vars, " create")
-      print("")
+      has_data_region=self.check_needs_data_region(op)
+      if (has_data_region): self.generate_data_region(op)
       self.generate_loop_annotation(op)
       self.print_op(op.loop.blocks[0].ops[0], stream)
-      self.print_indent()
-      print("!$acc exit data")
+      if (has_data_region):
+        self.print_indent()
+        print("!$acc exit data")
     elif isinstance(op, psy_gpu.CollapsedParallelLoop):
       self.print_op(op.loop.blocks[0].ops[0], stream)
+    elif isinstance(op, psy_gpu.DataRegion):
+      has_data_region=self.check_needs_data_region(op)      
+      if (has_data_region): self.generate_data_region(op)
+      for parallel_loop in op.contents.blocks[0].ops:
+        self.print_op(parallel_loop, stream)
+      if (has_data_region):
+        self.print_indent()
+        print("!$acc exit data")
     elif isinstance(op, psy_gpu.SequentialRoutine):
       print("")
       self.print_indent()
@@ -26,6 +31,17 @@ class OpenAccPrinter(ftn_printer.FortranPrinter):
       self.print_out_routine(op.routine.blocks[0].ops[0])
     else:
       ftn_printer.FortranPrinter.print_op(self, op, stream)
+      
+  def check_needs_data_region(self, op):
+    return len(op.copy_in_vars.blocks[0].ops) > 0 or len(op.copy_out_vars.blocks[0].ops) > 0 or len(op.create_vars.blocks[0].ops) > 0
+      
+  def generate_data_region(self, op):
+    self.print_indent()
+    print("!$acc enter data", end="")
+    self.generate_data_directive(op.copy_in_vars, " copyin")
+    self.generate_data_directive(op.copy_out_vars, " copyout")   
+    self.generate_data_directive(op.create_vars, " create")
+    print("")
       
   def generate_loop_annotation(self, parallel_loop):
     self.print_indent()

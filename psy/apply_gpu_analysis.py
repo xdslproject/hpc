@@ -168,7 +168,61 @@ class DetermineNumberOfCollapsedInnerLoops(Visitor):
      
   def traverse_collapsed_parallel_loop(self, collapsed_parallel_loop:psy_gpu.CollapsedParallelLoop):
     self.num_collapsed_loops+=1
-    self.traverse(collapsed_parallel_loop.loop.blocks[0].ops[0])    
+    self.traverse(collapsed_parallel_loop.loop.blocks[0].ops[0])
+    
+class CombineGPUParallelLoopsForDataRegionRewriter(RewritePattern):
+  @op_type_rewrite_pattern
+  def match_and_rewrite(self, parallel_loop: psy_gpu.ParallelLoop, rewriter: PatternRewriter):
+    block = parallel_loop.parent
+    if isinstance(block.parent.parent, psy_gpu.DataRegion): return        
+    start_idx = block.ops.index(parallel_loop)
+    idx=start_idx
+    for idx in range(start_idx, len(block.ops)):
+      if not isinstance(block.ops[idx], psy_gpu.ParallelLoop):
+        idx-=1 
+        break    
+    total_parallel_loops=((idx+1)-start_idx)
+    if total_parallel_loops > 1:      
+      parallel_loop_block = Block()
+      copyin_vars={}
+      copyout_vars={}
+      create_vars={}
+      # Go backwards to preserve indexes      
+      for idx in range(total_parallel_loops-1, start_idx-1, -1):        
+        parallel_loop=block.ops[idx]
+        parallel_loop.detach()
+        self.handle_data_accesses(copyin_vars, copyout_vars, create_vars, parallel_loop)                
+        parallel_loop_block.insert_op(parallel_loop, 0)
+                      
+      parallel_loops_region = Region()
+      parallel_loops_region.add_block(parallel_loop_block)
+      data_region=psy_gpu.DataRegion.get(parallel_loops_region, list(copyin_vars.values()), 
+                                         list(copyout_vars.values()), list(create_vars.values()))
+      rewriter.insert_op_at_pos(data_region, block, start_idx)
+      
+  def get_concrete_var_name(self, op):
+    if isinstance(op, ftn_dag.ExprName):
+      return op.var.var_name
+    elif isinstance(op, ftn_dag.ArrayAccess):
+      return get_concrete_var_name(op.var.blocks[0].ops[0])
+    elif isinstance(op, ftn_dag.MemberAccess):
+      return op.var.var_name
+    else:
+      return None
+    
+  def handle_data_accesses(self, copyin_vars, copyout_vars, create_vars, parallel_loop):
+    for op in parallel_loop.copy_in_vars.blocks[0].ops:
+      op.detach()
+      var_name=self.get_concrete_var_name(op)
+      if var_name is not None: copyin_vars[var_name]=op
+    for op in parallel_loop.copy_out_vars.blocks[0].ops:
+      op.detach()
+      var_name=self.get_concrete_var_name(op)
+      if var_name is not None: copyout_vars[var_name]=op
+    for op in parallel_loop.create_vars.blocks[0].ops:
+      op.detach()
+      var_name=self.get_concrete_var_name(op)
+      if var_name is not None: create_vars[var_name]=op
 
 def apply_gpu_analysis(ctx: ftn_dag.MLContext, module: ModuleOp) -> ModuleOp:
     applyGPURewriter=ApplyGPURewriter()
@@ -179,6 +233,11 @@ def apply_gpu_analysis(ctx: ftn_dag.MLContext, module: ModuleOp) -> ModuleOp:
     walker.rewrite_module(module)
     
     visitor = DetermineNumberOfCollapsedInnerLoops()
-    visitor.traverse(module)        
+    visitor.traverse(module)  
+    
+    walker=PatternRewriteWalker(GreedyRewritePatternApplier([CombineGPUParallelLoopsForDataRegionRewriter()]), apply_recursively=False)
+    walker.rewrite_module(module)
+    
+    #print(1+"J")
 
     return module
