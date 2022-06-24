@@ -83,15 +83,15 @@ class CollapsedParallelLoop(Operation):
     pass
     
 @irdl_op_definition    
-class SequentialRoutine(Operation):
-  name = "psy.gpu.sequentialroutine"
+class SequentialRoutineBody(Operation):
+  name = "psy.gpu.sequentialroutinebody"
     
   routine = SingleBlockRegionDef()
     
   @staticmethod
   def get(proc: List[Operation],
-          verify_op: bool = True) -> SequentialRoutine:
-    res = SequentialRoutine.build(regions=[proc])
+          verify_op: bool = True) -> SequentialRoutineBody:
+    res = SequentialRoutineBody.build(regions=[proc])
     if verify_op:
       res.verify(verify_nested_ops=False)
     return res

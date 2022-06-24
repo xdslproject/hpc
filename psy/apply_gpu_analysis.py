@@ -28,14 +28,14 @@ class ApplySequentialRoutineToCalledProcedures(RewritePattern):
   
   @op_type_rewrite_pattern
   def match_and_rewrite(self, routine: ftn_dag.Routine, rewriter: PatternRewriter):
-    if routine.routine_name.data in self.procedures_to_match:
-      patentblock = routine.parent
-      assert isinstance(patentblock, Block)
-      idx = patentblock.ops.index(routine)
-      routine.detach()
+    if routine.routine_name.data in self.procedures_to_match:      
+      op_list=[]
+      for op in routine.routine_body.blocks[0].ops:
+        op.detach()
+        op_list.append(op)
           
-      sequential_proc=psy_gpu.SequentialRoutine.get([routine])
-      rewriter.insert_op_at_pos(sequential_proc, patentblock, idx)
+      sequential_proc=psy_gpu.SequentialRoutineBody.get(op_list)      
+      rewriter.insert_op_at_pos(sequential_proc, routine.routine_body.blocks[0], 0)
         
 class AccessMode(Enum):
     WRITE = 1
@@ -137,16 +137,21 @@ class ApplyGPURewriter(RewritePattern):
         create_vars=[]
         private_vars=[]
         
+        # Need plain copy too (copies in and out)
         for key, value in visitor.written_variables.items():
-          copy_out_vars.append(value.clone())
-          if key not in visitor.read_variables:
-            create_vars.append(value.clone())
+          if isinstance(value, ftn_dag.MemberAccess):
+            copy_in_vars.append(ftn_dag.ExprName.create(attributes={"id": value.var.var_name, "var": value.var}))
+          copy_out_vars.append(value.clone())          
             
         for key, value in visitor.read_variables.items():
           if key not in  visitor.loop_variables:
+            if isinstance(value, ftn_dag.MemberAccess):
+              copy_in_vars.append(ftn_dag.ExprName.create(attributes={"id": value.var.var_name, "var": value.var}))
             copy_in_vars.append(value.clone())
           
         for key,value in visitor.loop_variables.items():
+          if isinstance(value, ftn_dag.MemberAccess):
+            copy_in_vars.append(ftn_dag.ExprName.create(attributes={"id": value.var.var_name, "var": value.var}))
           private_vars.append(value.clone())
         
         gpu_loop = psy_gpu.ParallelLoop.get([for_loop], 10, 10, copy_in_vars, copy_out_vars,
@@ -206,9 +211,16 @@ class CombineGPUParallelLoopsForDataRegionRewriter(RewritePattern):
     elif isinstance(op, ftn_dag.ArrayAccess):
       return get_concrete_var_name(op.var.blocks[0].ops[0])
     elif isinstance(op, ftn_dag.MemberAccess):
-      return op.var.var_name
+      # Do the append here as we need both the top level type and the data type too
+      return StringAttr(op.var.var_name.data+self.get_field_names(op.fields))
     else:
       return None
+    
+  def get_field_names(self, field_array):
+    str=""    
+    for entry in field_array.data:      
+      str+="%"+entry.data
+    return str
     
   def handle_data_accesses(self, copyin_vars, copyout_vars, create_vars, parallel_loop):
     for op in parallel_loop.copy_in_vars.blocks[0].ops:
@@ -236,8 +248,7 @@ def apply_gpu_analysis(ctx: ftn_dag.MLContext, module: ModuleOp) -> ModuleOp:
     visitor.traverse(module)  
     
     walker=PatternRewriteWalker(GreedyRewritePatternApplier([CombineGPUParallelLoopsForDataRegionRewriter()]), apply_recursively=False)
-    walker.rewrite_module(module)
-    
-    #print(1+"J")
+    walker.rewrite_module(module)      
 
+    #print(1 + "J")
     return module

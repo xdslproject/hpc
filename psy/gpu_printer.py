@@ -13,7 +13,7 @@ class OpenAccPrinter(ftn_printer.FortranPrinter):
       self.print_op(op.loop.blocks[0].ops[0], stream)
       if (has_data_region):
         self.print_indent()
-        print("!$acc exit data")
+        print("!$acc end data")
     elif isinstance(op, psy_gpu.CollapsedParallelLoop):
       self.print_op(op.loop.blocks[0].ops[0], stream)
     elif isinstance(op, psy_gpu.DataRegion):
@@ -23,12 +23,12 @@ class OpenAccPrinter(ftn_printer.FortranPrinter):
         self.print_op(parallel_loop, stream)
       if (has_data_region):
         self.print_indent()
-        print("!$acc exit data")
-    elif isinstance(op, psy_gpu.SequentialRoutine):
-      print("")
+        print("!$acc end data")
+    elif isinstance(op, psy_gpu.SequentialRoutineBody):      
       self.print_indent()
-      print("!$acc routine seq")
-      self.print_out_routine(op.routine.blocks[0].ops[0])
+      print("!$acc routine seq\n")
+      for routine_op in op.routine.blocks[0].ops:
+        self.print_op(routine_op)      
     else:
       ftn_printer.FortranPrinter.print_op(self, op, stream)
       
@@ -37,7 +37,7 @@ class OpenAccPrinter(ftn_printer.FortranPrinter):
       
   def generate_data_region(self, op):
     self.print_indent()
-    print("!$acc enter data", end="")
+    print("!$acc data", end="")
     self.generate_data_directive(op.copy_in_vars, " copyin")
     self.generate_data_directive(op.copy_out_vars, " copyout")   
     self.generate_data_directive(op.create_vars, " create")
