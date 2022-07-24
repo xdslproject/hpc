@@ -17,6 +17,7 @@ from ftn.dialects.ftn_ast import ftnAST
 from ftn.dialects.ftn_dag import ftnDAG
 #from psy.dialects.psy_flat import PsyFlat
 from psy.apply_gpu_analysis import apply_gpu_analysis
+from psy.determine_pgas_dependencies import apply_pgas_analysis
 from psy.util.semantic_error import SemanticError
 
 from typing import Callable, Dict, List
@@ -30,7 +31,8 @@ class PsyOptMain(xDSLOptMain):
         # IR Generation        
         ftn_ast_to_ftn_dag,
         bind_procedures,
-        apply_gpu_analysis
+        apply_gpu_analysis,
+        apply_pgas_analysis
     ]
 
     def register_all_passes(self):
