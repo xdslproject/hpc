@@ -56,7 +56,7 @@ class ApplyPGASRewriter(RewritePattern):
             self, assignment: ftn_dag.Assign, rewriter: PatternRewriter):       
 
         block = assignment.parent
-        idx = block.ops.index(assignment)        
+        idx = block.ops.index(assignment)
         
         read_vars=[]
         write_vars=[]
@@ -78,19 +78,89 @@ class ApplyPGASRewriter(RewritePattern):
           data_region = psy_pgas.DataRegion.get([assignment], read_vars, write_vars)
           rewriter.insert_op_at_pos(data_region, block, idx)
           
+class CollectIndexVariables(Visitor):
+  def __init__(self):
+    self.index_vars=[]
+    
+  def traverse_binary_expr(self, binary_expr: ftn_dag.BinaryExpr):
+    for op in binary_expr.lhs.blocks[0].ops:      
+      self.traverse(op)
+    for op in binary_expr.rhs.blocks[0].ops:      
+      self.traverse(op)
+      
+  def traverse_expr_name(self, id_expr: ftn_dag.ExprName): 
+    self.index_vars.append(id_expr.var)    
+          
+class CollectDataRegions(Visitor):
+  def __init__(self, loop_iterator_var):
+    self.applicable_input_items=[]
+    self.applicable_output_items=[]
+    
+    self.loop_iterator_var=[loop_iterator_var]
+    self.loop_iterator_var_names=[]
+    for v in self.loop_iterator_var:
+      loop_iterator_var_names.append(v.var_name.data)
+      
+  def check_is_var_indexes_iterated_here(self, var):
+    index_collector=CollectIndexVariables()
+    index_collector.traverse(var.indexes)      
+    # For now just key on the name, might need to make more complex in future
+    for index in index_collector.index_vars:
+      if not index.var_name.data in self.loop_iterator_var_names: return False
+    return True
+      
+  def traverse_data_region(self, data_region: psy_pgas.DataRegion):
+    for var in data_region.inputs.blocks[0].ops:
+      if self.check_is_var_indexes_iterated_here(var):
+        self.applicable_input_items.append(var)
+    for var in data_region.outputs.blocks[0].ops:
+      if self.check_is_var_indexes_iterated_here(var):
+        self.applicable_output_items.append(var)       
+        
+        # store pair here, the data region and the data item - as will need to remove from data region and then check if empty or not (to remove entirely)
+          
 class CollectPGASDataRegions(RewritePattern):
   def __init__(self):
     pass
     
   @op_type_rewrite_pattern
-    def match_and_rewrite(  # type: ignore reportIncompatibleMethodOverride
-            self, assignment: ftn_dag.Do, rewriter: PatternRewriter):
+  def match_and_rewrite(  # type: ignore reportIncompatibleMethodOverride
+            self, do: ftn_dag.Do, rewriter: PatternRewriter):
+              
+    block = do.parent
+    idx = block.ops.index(do)
+    
+    print(do.iterator.blocks[0].ops[0].var.var_name.data)
+    visitor = CollectDataRegions(do.iterator.blocks[0].ops[0].var)
+    for op in do.body.blocks[0].ops:
+      visitor.traverse(op)
+      
+    read_vars=[]
+    write_vars=[]
+    if len(visitor.data_regions) > 0:
+      for data_region in visitor.data_regions:
+        for op in data_region.inputs.blocks[0].ops:
+          read_vars.append(op)
+          op.detach()
+        for op in data_region.outputs.blocks[0].ops:
+          write_vars.append(op)
+          op.detach()
+        parent=data_region.parent
+        parent_idx=parent.ops.index(data_region)        
+        data_region.detach()
+        a=data_region.contents.blocks[0].ops[0]
+        data_region.contents.blocks[0].ops[0].detach()
+        rewriter.insert_op_at_pos(a, parent, parent_idx)
         
+      do.detach()      
+      combined_data_region = psy_pgas.DataRegion.get([do], read_vars, write_vars) 
+      rewriter.insert_op_at_pos(combined_data_region, block, idx)
 
 def apply_pgas_analysis(ctx: ftn_dag.MLContext, module: ModuleOp) -> ModuleOp:
     applyPGASRewriter=ApplyPGASRewriter()
-    walker = PatternRewriteWalker(GreedyRewritePatternApplier([applyPGASRewriter]), apply_recursively=False, walk_regions_first=True)
-    walker.rewrite_module(module)
+    collector=CollectPGASDataRegions()
+    walker = PatternRewriteWalker(GreedyRewritePatternApplier([applyPGASRewriter, collector]), apply_recursively=False, walk_regions_first=True)
+    walker.rewrite_module(module)          
     
-    #print("a"+3)
+    print("a"+3)
     return module
