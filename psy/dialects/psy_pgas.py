@@ -29,8 +29,8 @@ class DataRegion(Operation):
     pass
 
 @irdl_op_definition
-class DataItem(Operation):
-  name = "psy.pgas.dataitem"
+class SingleDataItem(Operation):
+  name = "psy.pgas.singledataitem"
   
   variable=SingleBlockRegionDef()
   indexes=SingleBlockRegionDef()
@@ -39,7 +39,7 @@ class DataItem(Operation):
   def get(variable: List[Operation],
           indexes: List[Operation],          
           verify_op: bool = True) -> DataItem:
-    res = DataItem.build(regions=[variable, indexes])
+    res = SingleDataItem.build(regions=[variable, indexes])
     if verify_op:
         res.verify(verify_nested_ops=False)
     return res
