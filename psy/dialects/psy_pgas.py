@@ -46,3 +46,41 @@ class SingleDataItem(Operation):
 
   def verify_(self) -> None:
     pass
+    
+@irdl_op_definition
+class VectorDataItem(Operation):
+  name = "psy.pgas.vectordataitem"
+  
+  variable=SingleBlockRegionDef()
+  indexes=SingleBlockRegionDef()
+  
+  @staticmethod
+  def get(variable: List[Operation],
+          indexes: List[Operation],          
+          verify_op: bool = True) -> DataItem:
+    res = VectorDataItem.build(regions=[variable, indexes])
+    if verify_op:
+        res.verify(verify_nested_ops=False)
+    return res
+
+  def verify_(self) -> None:
+    pass
+    
+@irdl_op_definition
+class RangeIndex(Operation):
+  name = "psy.pgas.rangeindex"
+  
+  index_from=SingleBlockRegionDef()
+  index_to=SingleBlockRegionDef()
+  
+  @staticmethod
+  def get(index_from: List[Operation],
+          index_to: List[Operation],          
+          verify_op: bool = True) -> DataItem:
+    res = RangeIndex.build(regions=[index_from, index_to])
+    if verify_op:
+        res.verify(verify_nested_ops=False)
+    return res
+
+  def verify_(self) -> None:
+    pass  
