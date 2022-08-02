@@ -10,6 +10,7 @@ from xdsl.dialects.builtin import ModuleOp
 #from psy.psy_ast_to_psy_flat import psy_ast_to_psy_flat
 from ftn.ftn_ast_to_ftn_dag import ftn_ast_to_ftn_dag
 from ftn.bind_procedures import bind_procedures
+from ftn.unbind_procedures import unbind_procedures
 from ftn.ftn_printer import print_fortran
 from psy.gpu_printer import print_openacc
 
@@ -31,6 +32,7 @@ class PsyOptMain(xDSLOptMain):
         # IR Generation        
         ftn_ast_to_ftn_dag,
         bind_procedures,
+        unbind_procedures,
         apply_gpu_analysis,
         apply_pgas_analysis
     ]
