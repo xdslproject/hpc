@@ -44,6 +44,15 @@ class CollectAccessedVariables(Visitor):
 class ApplyPGASRewriter(RewritePattern):
     def __init__(self):
       self.called_procedures=[]
+      self.inside_bound_proc=False
+      
+    @op_type_entry_pattern
+    def entry_operation(self, callexpr:ftn_dag.CallExpr):
+      self.inside_bound_proc=True
+
+    @op_type_exit_pattern
+    def exit_operation(self, callexpr:ftn_dag.CallExpr):
+      self.inside_bound_proc=False
 
     def findContainingStatement(self, block):
       while block is not None:
@@ -54,7 +63,7 @@ class ApplyPGASRewriter(RewritePattern):
     @op_type_rewrite_pattern
     def match_and_rewrite(  # type: ignore reportIncompatibleMethodOverride
             self, assignment: ftn_dag.Assign, rewriter: PatternRewriter):
-
+      if self.inside_bound_proc:
         block = assignment.parent
         idx = block.ops.index(assignment)
 
@@ -149,6 +158,14 @@ class CollectPGASDataRegions(RewritePattern):
   def __init__(self):
     # Won't work with different loops not nested as needs to remove a loop when leaves scope
     self.processed_loop_vars=[]
+    
+  @op_type_entry_pattern
+  def entry_operation(self, do:ftn_dag.Do):
+   self.processed_loop_vars.append(do.iterator.blocks[0].ops[0].var)
+
+  @op_type_exit_pattern
+  def exit_operation(self, do:ftn_dag.Do):
+    self.processed_loop_vars.pop()
 
   @op_type_rewrite_pattern
   def match_and_rewrite(  # type: ignore reportIncompatibleMethodOverride
@@ -156,8 +173,7 @@ class CollectPGASDataRegions(RewritePattern):
 
     block = do.parent
     idx = block.ops.index(do)
-
-    self.processed_loop_vars.append(do.iterator.blocks[0].ops[0].var)
+    
     visitor = CollectDataRegions(self.processed_loop_vars)
     for op in do.body.blocks[0].ops:
       visitor.traverse(op)
@@ -531,6 +547,8 @@ class ConcatenateRanges(RewritePattern):
     self.process_region(data_region.outputs)
 
 def apply_pgas_analysis(ctx: ftn_dag.MLContext, module: ModuleOp) -> ModuleOp:
+    # Currently only apply to bound procedures - this is not ideal as if there isn't anything we can extract from the 
+    # routine itself then it's lost. Therefore need to consider this in more detail
     applyPGASRewriter=ApplyPGASRewriter()
     walker = PatternRewriteWalker(GreedyRewritePatternApplier([applyPGASRewriter]), apply_recursively=False, walk_regions_first=False)
     walker.rewrite_module(module)
