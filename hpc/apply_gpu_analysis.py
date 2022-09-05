@@ -6,7 +6,7 @@ from xdsl.pattern_rewriter import (GreedyRewritePatternApplier,
                                    RewritePattern, op_type_rewrite_pattern)
 
 from ftn.dialects import ftn_dag
-from psy.dialects import psy_gpu
+from hpc.dialects import hpc_gpu
 from util.visitor import Visitor
 from enum import Enum
 
@@ -19,7 +19,7 @@ class ApplyCoalesceToNestedLoops(RewritePattern):
         idx = patentblock.ops.index(for_loop)
         for_loop.detach()
         
-        collapsed_loop=psy_gpu.CollapsedParallelLoop.get([for_loop])
+        collapsed_loop=hpc_gpu.CollapsedParallelLoop.get([for_loop])
         rewriter.insert_op_at_pos(collapsed_loop, patentblock, idx)
         
 class ApplySequentialRoutineToCalledProcedures(RewritePattern):
@@ -34,7 +34,7 @@ class ApplySequentialRoutineToCalledProcedures(RewritePattern):
         op.detach()
         op_list.append(op)
           
-      sequential_proc=psy_gpu.SequentialRoutineBody.get(op_list)      
+      sequential_proc=hpc_gpu.SequentialRoutineBody.get(op_list)      
       rewriter.insert_op_at_pos(sequential_proc, routine.routine_body.blocks[0], 0)
         
 class AccessMode(Enum):
@@ -118,7 +118,7 @@ class ApplyGPURewriter(RewritePattern):
         
         block = for_loop.parent
         assert isinstance(block, Block)        
-        if isinstance(block.parent.parent, psy_gpu.CollapsedParallelLoop): return
+        if isinstance(block.parent.parent, hpc_gpu.CollapsedParallelLoop): return
         
         idx = block.ops.index(for_loop)
            
@@ -154,7 +154,7 @@ class ApplyGPURewriter(RewritePattern):
             copy_in_vars.append(ftn_dag.ExprName.create(attributes={"id": value.var.var_name, "var": value.var}))
           private_vars.append(value.clone())
         
-        gpu_loop = psy_gpu.ParallelLoop.get([for_loop], 10, 10, copy_in_vars, copy_out_vars,
+        gpu_loop = hpc_gpu.ParallelLoop.get([for_loop], 10, 10, copy_in_vars, copy_out_vars,
                                              create_vars, private_vars)
         rewriter.insert_op_at_pos(gpu_loop, block, idx)
         
@@ -166,24 +166,24 @@ class ApplyGPURewriter(RewritePattern):
 class DetermineNumberOfCollapsedInnerLoops(Visitor):
   num_collapsed_loops=0
   
-  def traverse_parallel_loop(self, parallel_loop:psy_gpu.ParallelLoop):
+  def traverse_parallel_loop(self, parallel_loop:hpc_gpu.ParallelLoop):
      self.num_collapsed_loops=0     
      self.traverse(parallel_loop.loop.blocks[0].ops[0])
      parallel_loop.attributes["num_inner_loops_to_collapse"]=IntAttr(self.num_collapsed_loops)
      
-  def traverse_collapsed_parallel_loop(self, collapsed_parallel_loop:psy_gpu.CollapsedParallelLoop):
+  def traverse_collapsed_parallel_loop(self, collapsed_parallel_loop:hpc_gpu.CollapsedParallelLoop):
     self.num_collapsed_loops+=1
     self.traverse(collapsed_parallel_loop.loop.blocks[0].ops[0])
     
 class CombineGPUParallelLoopsForDataRegionRewriter(RewritePattern):
   @op_type_rewrite_pattern
-  def match_and_rewrite(self, parallel_loop: psy_gpu.ParallelLoop, rewriter: PatternRewriter):
+  def match_and_rewrite(self, parallel_loop: hpc_gpu.ParallelLoop, rewriter: PatternRewriter):
     block = parallel_loop.parent
-    if isinstance(block.parent.parent, psy_gpu.DataRegion): return        
+    if isinstance(block.parent.parent, hpc_gpu.DataRegion): return        
     start_idx = block.ops.index(parallel_loop)
     idx=start_idx
     for idx in range(start_idx, len(block.ops)):
-      if not isinstance(block.ops[idx], psy_gpu.ParallelLoop):
+      if not isinstance(block.ops[idx], hpc_gpu.ParallelLoop):
         idx-=1 
         break    
     total_parallel_loops=((idx+1)-start_idx)
@@ -201,7 +201,7 @@ class CombineGPUParallelLoopsForDataRegionRewriter(RewritePattern):
                       
       parallel_loops_region = Region()
       parallel_loops_region.add_block(parallel_loop_block)
-      data_region=psy_gpu.DataRegion.get(parallel_loops_region, list(copyin_vars.values()), 
+      data_region=hpc_gpu.DataRegion.get(parallel_loops_region, list(copyin_vars.values()), 
                                          list(copyout_vars.values()), list(create_vars.values()))
       rewriter.insert_op_at_pos(data_region, block, start_idx)
       

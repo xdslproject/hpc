@@ -9,7 +9,7 @@ from xdsl.irdl import (AnyOf, AttributeDef, SingleBlockRegionDef, builder, AnyAt
 
 @irdl_op_definition
 class DataRegion(Operation):
-  name = "psy.gpu.dataregion"
+  name = "hpc.gpu.dataregion"
   
   contents=SingleBlockRegionDef()
   copy_in_vars= SingleBlockRegionDef()
@@ -32,7 +32,7 @@ class DataRegion(Operation):
 
 @irdl_op_definition
 class ParallelLoop(Operation):
-  name = "psy.gpu.parallelloop"
+  name = "hpc.gpu.parallelloop"
     
   loop = SingleBlockRegionDef()
     
@@ -67,7 +67,7 @@ class ParallelLoop(Operation):
 
 @irdl_op_definition    
 class CollapsedParallelLoop(Operation):
-  name = "psy.gpu.collapsedparallelloop"
+  name = "hpc.gpu.collapsedparallelloop"
     
   loop = SingleBlockRegionDef()  
     
@@ -84,7 +84,7 @@ class CollapsedParallelLoop(Operation):
     
 @irdl_op_definition    
 class SequentialRoutineBody(Operation):
-  name = "psy.gpu.sequentialroutinebody"
+  name = "hpc.gpu.sequentialroutinebody"
     
   routine = SingleBlockRegionDef()
     

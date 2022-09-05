@@ -9,7 +9,7 @@ from xdsl.irdl import (AnyOf, AttributeDef, SingleBlockRegionDef, builder, AnyAt
 
 @irdl_op_definition
 class DataRegion(Operation):
-  name = "psy.pgas.dataregion"
+  name = "hpc.pgas.dataregion"
 
   contents=SingleBlockRegionDef()
   inputs= SingleBlockRegionDef()
@@ -30,7 +30,7 @@ class DataRegion(Operation):
 
 @irdl_op_definition
 class SingleDataItem(Operation):
-  name = "psy.pgas.singledataitem"
+  name = "hpc.pgas.singledataitem"
   
   variable=SingleBlockRegionDef()
   indexes=SingleBlockRegionDef()
@@ -49,7 +49,7 @@ class SingleDataItem(Operation):
     
 @irdl_op_definition
 class VectorDataItem(Operation):
-  name = "psy.pgas.vectordataitem"
+  name = "hpc.pgas.vectordataitem"
   
   variable=SingleBlockRegionDef()
   indexes=SingleBlockRegionDef()
@@ -68,7 +68,7 @@ class VectorDataItem(Operation):
     
 @irdl_op_definition
 class RangeIndex(Operation):
-  name = "psy.pgas.rangeindex"
+  name = "hpc.pgas.rangeindex"
   
   index_from=SingleBlockRegionDef()
   index_to=SingleBlockRegionDef()

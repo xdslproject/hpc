@@ -7,7 +7,7 @@ from xdsl.pattern_rewriter import (GreedyRewritePatternApplier,
                                    op_type_entry_pattern, op_type_exit_pattern)
 
 from ftn.dialects import ftn_dag, ftn_type
-from psy.dialects import psy_pgas
+from hpc.dialects import hpc_pgas
 from util.visitor import Visitor
 from enum import Enum
 
@@ -37,7 +37,7 @@ class CollectAccessedVariables(Visitor):
     entry.append(accessors)
     self.accessed_variables[var_handle.var.var_name.data]=entry
 
-  def traverse_data_region(self, dataregion: psy_pgas.DataRegion):
+  def traverse_data_region(self, dataregion: hpc_pgas.DataRegion):
     pass
 
 
@@ -74,17 +74,17 @@ class ApplyPGASRewriter(RewritePattern):
         for op in assignment.lhs.blocks[0].ops:
           visitor.traverse(op)
         for key, value in visitor.accessed_variables.items():
-          write_vars.append(psy_pgas.SingleDataItem.get([value[0]], value[1]))
+          write_vars.append(hpc_pgas.SingleDataItem.get([value[0]], value[1]))
 
         visitor.clear()
         for op in assignment.rhs.blocks[0].ops:
           visitor.traverse(op)
         for key, value in visitor.accessed_variables.items():
-          read_vars.append(psy_pgas.SingleDataItem.get([value[0]], value[1]))
+          read_vars.append(hpc_pgas.SingleDataItem.get([value[0]], value[1]))
 
         if len(read_vars) > 0 or len(write_vars) > 0:
           assignment.detach()
-          data_region = psy_pgas.DataRegion.get([assignment], read_vars, write_vars)
+          data_region = hpc_pgas.DataRegion.get([assignment], read_vars, write_vars)
           rewriter.insert_op_at_pos(data_region, block, idx)
 
 class CollectIndexVariables(Visitor):
@@ -146,7 +146,7 @@ class CollectDataRegions(Visitor):
       if not index.var_name.data in self.loop_iterator_var_names: return False
     return True
 
-  def traverse_data_region(self, data_region: psy_pgas.DataRegion):
+  def traverse_data_region(self, data_region: hpc_pgas.DataRegion):
     for var in data_region.inputs.blocks[0].ops:
       if self.check_is_var_indexes_iterated_here(var):
         self.applicable_input_items.append((data_region, var))
@@ -205,7 +205,7 @@ class CollectPGASDataRegions(RewritePattern):
       for block in do.body.blocks:
         do.body.detach_block(block)
         do_loop_blocks.append(block)
-      combined_data_region = psy_pgas.DataRegion.get(do_loop_blocks, read_vars, write_vars)
+      combined_data_region = hpc_pgas.DataRegion.get(do_loop_blocks, read_vars, write_vars)
       block=Block()
       block.add_op(combined_data_region)
       do.body.add_block(block)
@@ -295,12 +295,12 @@ class CombineDataItemsIntoRanges(RewritePattern):
     return new_op
 
   def find_or_add_data_region_above_loop(self, loop):
-    if isinstance(loop.parent_op(), psy_pgas.DataRegion):
+    if isinstance(loop.parent_op(), hpc_pgas.DataRegion):
       return loop.parent_op()
     immediate_parent=loop.parent
     idx=loop.parent.ops.index(loop)
     loop.detach()
-    newdr=psy_pgas.DataRegion.get([loop], [], [])
+    newdr=hpc_pgas.DataRegion.get([loop], [], [])
     immediate_parent.insert_op(newdr, idx)
     return newdr
 
@@ -313,9 +313,9 @@ class CombineDataItemsIntoRanges(RewritePattern):
       for op in singledataitem.indexes.blocks[0].ops:
         start_op=self.replace_op_with_range(index_collector, op, True)
         stop_op=self.replace_op_with_range(index_collector, op, False)
-        newrange=psy_pgas.RangeIndex.get([start_op], [stop_op])
+        newrange=hpc_pgas.RangeIndex.get([start_op], [stop_op])
         ranges.append(newrange)
-      vdi=psy_pgas.VectorDataItem.get([singledataitem.variable.blocks[0].ops[0].clone()], ranges)
+      vdi=hpc_pgas.VectorDataItem.get([singledataitem.variable.blocks[0].ops[0].clone()], ranges)
       new_dr=self.find_or_add_data_region_above_loop(self.parent_loops_ordered[top_level_loop_index])
       if isInput:
         new_dr.inputs.blocks[0].add_op(vdi)
@@ -324,7 +324,7 @@ class CombineDataItemsIntoRanges(RewritePattern):
       singledataitem.detach()
 
   @op_type_rewrite_pattern
-  def match_and_rewrite(self, data_region: psy_pgas.DataRegion, rewriter: PatternRewriter):
+  def match_and_rewrite(self, data_region: hpc_pgas.DataRegion, rewriter: PatternRewriter):
     if len(self.parent_loops) > 0:
       for singledataitem in data_region.inputs.blocks[0].ops:
         self.move_single_data_items_to_ranges(singledataitem, True)
@@ -535,14 +535,14 @@ class ConcatenateRanges(RewritePattern):
   def process_region(self, region):
     indexes_to_ignore=[]
     for idx, dataitem in enumerate(region.blocks[0].ops):
-      if isinstance(dataitem, psy_pgas.VectorDataItem) and idx not in indexes_to_ignore:
+      if isinstance(dataitem, hpc_pgas.VectorDataItem) and idx not in indexes_to_ignore:
         indexes_to_ignore.extend(self.process_vectordataitem_for_concatenation(dataitem, region.blocks[0].ops))
     indexes_to_ignore.sort(reverse=True)
     for idx in indexes_to_ignore:
       region.blocks[0].erase_op(idx)
 
   @op_type_rewrite_pattern
-  def match_and_rewrite(self, data_region: psy_pgas.DataRegion, rewriter: PatternRewriter):
+  def match_and_rewrite(self, data_region: hpc_pgas.DataRegion, rewriter: PatternRewriter):
     self.process_region(data_region.inputs)
     self.process_region(data_region.outputs)
 

@@ -1,4 +1,4 @@
-# PSyclone xDSL transformations
+# HPC xDSL transformations
 
 Needs to have ftn xDSL dialect in _PYTHONPATH_
 

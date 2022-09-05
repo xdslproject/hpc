@@ -1,12 +1,12 @@
 from ftn.dialects import *
-from psy.dialects import psy_gpu
+from hpc.dialects import hpc_gpu
 from xdsl.dialects.builtin import StringAttr, IntegerAttr
 from ftn import ftn_printer
 import sys
 
 class OpenAccPrinter(ftn_printer.FortranPrinter):
   def print_op(self, op, stream=sys.stdout):
-    if isinstance(op, psy_gpu.ParallelLoop):
+    if isinstance(op, hpc_gpu.ParallelLoop):
       has_data_region=self.check_needs_data_region(op)
       if (has_data_region): self.generate_data_region(op)
       self.generate_loop_annotation(op)
@@ -14,9 +14,9 @@ class OpenAccPrinter(ftn_printer.FortranPrinter):
       if (has_data_region):
         self.print_indent()
         print("!$acc end data")
-    elif isinstance(op, psy_gpu.CollapsedParallelLoop):
+    elif isinstance(op, hpc_gpu.CollapsedParallelLoop):
       self.print_op(op.loop.blocks[0].ops[0], stream)
-    elif isinstance(op, psy_gpu.DataRegion):
+    elif isinstance(op, hpc_gpu.DataRegion):
       has_data_region=self.check_needs_data_region(op)      
       if (has_data_region): self.generate_data_region(op)
       for parallel_loop in op.contents.blocks[0].ops:
@@ -24,7 +24,7 @@ class OpenAccPrinter(ftn_printer.FortranPrinter):
       if (has_data_region):
         self.print_indent()
         print("!$acc end data")
-    elif isinstance(op, psy_gpu.SequentialRoutineBody):      
+    elif isinstance(op, hpc_gpu.SequentialRoutineBody):      
       self.print_indent()
       print("!$acc routine seq\n")
       for routine_op in op.routine.blocks[0].ops:
